@@ -1,0 +1,1606 @@
+\documentclass[notitlepage,12pt]{jedm}
+
+
+
+%\usepackage{endfloat}
+%\usepackage{soul}
+
+%\usepackage{type1ec}
+\usepackage{subcaption}
+\usepackage{fullpage}
+\usepackage{enumerate}
+%\usepackage{graphicx}
+%\usepackage{graphics}
+\usepackage{multirow}
+\usepackage{comment}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{bbm}
+\usepackage{setspace}
+\usepackage{verbatim}
+%\usepackage{natbib}
+\usepackage{bm}
+\usepackage{pdflscape}
+%\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usepackage{xr}
+%\usepackage{mathabx}
+%\usepackage{filecontents}
+%\usepackage{bibentry}
+%\usepackage{hanging}
+%\usepackage{apacite}
+%\usepackage{hyperref}
+\usepackage{makecell}
+\usepackage{hyperref}
+
+
+%\usepackage{endnotes}
+
+%\let\footnote=\endnote
+
+\newcommand{\yti}{Y_{Ti}}
+\newcommand{\yci}{Y_{Ci}}
+\renewcommand{\ss}{M}
+\newcommand{\st}{M_T}
+\newcommand{\sti}{M_{Ti}}
+\newcommand{\sci}{M_{Ci}}
+\newcommand{\mucf}{\mu_{CF}}
+\newcommand{\mutf}{\mu_{TF}}
+\newcommand{\mucs}{\mu_{CS}}
+\newcommand{\muts}{\mu_{TS}}
+\newcommand{\sigcf}{\sigma_{CF}}
+\newcommand{\sigtf}{\sigma_{TF}}
+\newcommand{\sigcs}{\sigma_{CS}}
+\newcommand{\sigts}{\sigma_{TS}}
+\newcommand{\xx}{\bm{x}}
+\newcommand{\XX}{\bm{X}}
+\newcommand{\ncf}{n_{CF}}
+\newcommand{\sind}{\mathcal{\ss}_T}
+\newcommand{\sindi}{\mathcal{\ss}_{Ti}}
+\newcommand{\EE}{\mathbb{E}}
+\newcommand{\R}{\texttt{R} }
+
+
+\providecommand{\floor}[1]{\left \lfloor #1 \right \rfloor }
+
+
+\title{Principal Stratification for Intelligent Tutors: A Tutorial}
+
+\author{{\large Adam C Sales}\\University of Texas College of Education\\asales@utexas.edu \and {\large John F Pane}\\RAND Corporation\\jpane@rand.org}
+
+\date{}
+<<include=FALSE>>=
+library(knitr)
+#library(tikzDevice)
+opts_chunk$set(
+echo=TRUE, cache=TRUE,warning=FALSE,error=FALSE,message=FALSE,autodep = TRUE,size='small'
+    )
+
+#options(tikzDefaultEngine = "pdftex")
+@
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+That some intelligent tutors help some
+students sometimes is now beyond doubt.
+That some intelligent tutors fail to help, or even hurt, some students
+sometimes, is also known.
+What is unknown is what drives this heterogeneity---why do tutors
+sometimes help, and sometimes hurt students' learning?
+Presumably, differences in how different students use educational
+technology plays an important role in how much that technology helps
+them learn.
+There is plenty of available data to measure student usage---primarily
+log data---and a growing number of randomized trials to assess tutors'
+effectiveness.
+However, estimating the relationship between usage and effectiveness
+requires surmounting subtle and difficult statistical challenges;
+standard methods are not available.
+
+This paper describes and illustrates principal stratification, a causal inference
+framework that allows for causal modeling of log data from a
+randomized trial of an intelligent tutor.
+Using data from the Cognitive Tutor Algebra I effectiveness trial, it
+demonstrates two methods for conducting a principal stratification
+analysis, including code in \R and Stan.
+It demonstrates the entire process of a principal stratification
+analysis, including data pre-processing, model formulation, fitting,
+and checking, and the examination and interpretation of results.
+\end{abstract}
+
+\section{Introduction: Intelligent Tutors, Log Data, and
+  Effectiveness}
+
+Between 2007 and 2009, a team of researchers at the RAND Corporation
+conducted a multi-state randomized trial of the Cognitive Tutor
+Algebra I (CTAI) curriculum.
+Algebra I classrooms in schools randomly selected for intervention
+were granted access to the Cognitive Tutor software, an intelligent
+tutoring system, along with a student-centered curriculum and
+textbook, both produced by the Carnegie Learning corporation.
+Schools selected for the control condition continued with business as
+usual.
+
+The results \cite{pane2014effectiveness} were mixed---a negative,
+statistically insignificant effect on post-test scores in the first year and a substantial
+positive effect, statistically significant in the high school sample,
+in year 2.
+Evidently, CTAI effected different students differently.
+What drove these differences?
+Some of the differences may be explained by students'
+characteristics---for example, it may have had a different effect for
+high and low performing students, or for students of different
+socioeconomic backgrounds.
+Relatively straightforward subgroup analyses or treatment moderation
+methods are available to study these differences.
+Another likely driver of treatment effect heterogeneity was
+usage---students and teachers who used the CTAI curriculum differently
+benefited (or, possibly, were hurt) to different extents.
+
+The RAND experiment produced a large and rich auxiliary dataset to
+study usage of the software component of CTAI---computerized log data.
+Over the course of the study, Carnegie Learning recorded which
+students worked which portions of the software on what dates, for how
+long, and with what results.
+How does software usage correspond with treatment effects?
+Are some styles of usage more effective than others?
+
+These types of data, and these types of questions, are
+not unique to CTAI.
+The past decade has seen a number of large randomized field
+trials of educational technology \cite{reviewEdTech}.
+Each of these presumably generated log data, that can now be used to
+answer (and spur) questions about the relationship between software
+usage and treatment effects.
+
+This paper is a tutorial for methods to answer these types of
+questions under the
+framework of principal stratification (PS) \cite{AIR,frangakis,page2012principal}.
+PS aims to estimate treatment
+effects for subsets of a sample defined by ``intermediate
+variables''---variables that may, themselves, have been affected by
+treatment assignment.
+Software usage is one example---assignment to treatment gave students
+access to the software---but other examples abound.
+For instance, attrition or missing outcome data, compliance with
+treatment assignment, and treatment-effect mediators are all
+intermediate variables.
+In this paper, we will describe PS with the goal of
+helping intelligent tutoring researchers apply the methods to
+their own studies.
+We will describe the PS framework---its targets of estimation and
+their rationale---and two methods for estimating PS models.
+Along the way, we will demonstrate these methods with a simplified
+analysis of the RAND CTAI dataset, including code in \R
+\cite{rcite} and Stan \cite{stan}.
+Recent work, by ourselves and others, has shown that estimating PS
+models may be harder than previously thought---for that reason, we
+will devote considerable space to model checking and validation.
+
+
+
+
+\section{Running Example: Starting at the Beginning}
+To demonstrate the ideas and practice of PS for
+ITS experiments, we will focus on a particular example.
+We present the analyses to illustrate the method, not to evaluate
+CTAI.
+
+The Cognitive Tutor is built on the theory of mastery
+learning---students progress through a set curriculum at their own
+pace, as they master each of its skills.
+By default, students in the CTAI curriculum were supposed to begin
+with the first unit, ``Linear Patterns.''
+However, a number of students in the
+intervention group in the second year of the study began their Algebra
+I work with a later section.
+While it is hard to know the true reasons some students began with a later
+section, it may be because their teachers believed that they had
+already mastered ``Linear Patterns'' and could safely skip it.
+In that case, we might imagine that those students experienced greater
+treatment effects by avoiding wasting time on sections they had
+already mastered.
+On the other hand, they may experience smaller treatment effects if
+their teachers' judgment was mistaken, or if working earlier sections
+helps in other ways.
+To distinguish between these hypotheses, it may be useful to estimate
+the CTAI treatment effect for two groups of students: ``firsters,''
+who started at the first unit, and ``skippers,''
+who started at later units.
+Of course, skippers and firsters likely differ in more than just the
+first units they worked---interpreting any difference between
+treatment effects for the two groups will take some care.
+
+The following code in \R  loads the dataset we will be using, which is
+available for download at \url{http://tiny.cc/psEDMdata}.
+<<loadData,echo=TRUE,message=FALSE,warning=FALSE,error=FALSE,results='asis'>>=
+dat <- read.csv('CTAIdata.csv')
+@
+Here is a short summary of its contents:\\
+\begin{center}
+<<dataSummary,echo=FALSE>>=
+library(kableExtra)
+tab <- NULL
+for(vv in which(names(dat)!='treatment')){
+    if(is.numeric(dat[[vv]])){
+        tab <- rbind(tab,
+                      c(names(dat)[vv],'',
+                        paste0(round(mean(dat[[vv]][dat$treatment==1],na.rm=TRUE),2),
+                               ' (', round(sd(dat[[vv]][dat$treatment==1],na.rm=TRUE),2),')'),
+                        paste0(round(mean(dat[[vv]][dat$treatment==0],na.rm=TRUE),2),
+                               ' (', round(sd(dat[[vv]][dat$treatment==0],na.rm=TRUE),2),')')))
+    } else{
+        for(ll in unique(na.omit(dat[[vv]])))
+            tab <- rbind(tab,
+                         c(names(dat)[vv],ll,
+                           paste0(round(mean(dat[[vv]][dat$treatment==1]==ll,na.rm=TRUE)*100),'%'),
+                           paste0(round(mean(dat[[vv]][dat$treatment==0]==ll,na.rm=TRUE)*100),'%')))
+    }
+}
+
+tab2 <- tab[,2:4]
+colnames(tab2) <- c('', 'Treatment','Control')
+tab2[tab2[,1]%in%c('skipper','firster'),'Control'] <- ''
+tab2 <- rbind(tab2,c('n',sum(dat$treatment),sum(1-dat$treatment)))
+kable(tab2)%>%group_rows(index=sapply(dat[-1],function(x) if(is.numeric(x)) 1 else length(unique(na.omit(x)))))
+@
+\end{center}
+The dataset contains outcomes \texttt{Y}---Algebra I posttest
+scores---\texttt{begin}, an indicator for whether treated students are
+firsters or skippers (it is \texttt{NA} for control students), and a
+set of baseline covariates: \texttt{grade} takes values of 9 or
+higher, for students in 9th or higher grades, respectively,
+\texttt{race}, with combined categories of Hispanic/American Indian/Alaskan
+Native, Black/Multiracial, and White/Asian, \texttt{sex},
+\texttt{frl}, an indicator for students who receive free or
+reduced-price lunch, \texttt{spec}, which categorizes students as
+typical, gifted, or receiving special education, \texttt{esl}, an
+indicator for students learning English as a second language, and
+\texttt{pretest}, an Algebra I pretest comparable to the post-test but
+take before the onset of the experiment.
+The last line of the table, labeled \texttt{n}, gives the sample sizes
+in the two groups: \Sexpr{sum(dat[['treatment']])} treated students
+and \Sexpr{sum(1-dat[['treatment']])} controls.
+
+This dataset contains a subset of the students and of the variables
+included in the larger CTAI dataset.
+Specifically, it includes only data from the second year of the study,
+collected from intervention schools in Texas in which usage data was
+observed, along with their matched controls.
+It also excludes nesting information---the
+intervention was assigned at the school level, and within schools,
+students were nested within teachers and classrooms.
+Finally, it elides missing data issues: missing covariate data were
+imputed in advance and intervention students with missing usage data
+were discarded.
+
+These simplifications were meant to ease exposition---as we shall see,
+estimating PS models is a rather complex process, even without
+clustered and missing data.
+For that reason, the results we present here should not be taken
+seriously; the point is to demonstrate PS modeling, not to
+answer substantive questions about the CTAI effect.
+
+
+\section{Causal Inference and Principal Stratification}
+\subsection{Average Effects from Randomized Experiments}
+In the Neyman-Rubin Causal Model \cite{holland86,rubin},
+causation is, in essences, a contrast between potential outcomes.
+If, say, $Y_i$ is the posttest score for student $i$, then $\yti$ is
+the posttest score $i$ would exhibit \emph{were $i$ assigned to the
+  treatment condition} and $\yci$ is $i$'s score if $i$ is assigned to
+the control condition.
+Crucially, the potential outcomes $Y_T$ and $Y_C$ are defined based on
+treatment \emph{assignment}, not actual receipt of treatment.
+This follows the ``intent to treat'' principle \cite{itt}.
+Since students can only be assigned to one of the two conditions, for
+each student $i$ only one of $\yti$ and $\yci$ is
+observed---researchers observe $\yti$ for students assigned to
+treatment and $\yci$ for those assigned to control.
+The other, missing potential outcome needs to be estimated.
+Since reliably estimating individual values $\yci$ and $\yti$ is often
+impossible, the goal of causal inference is typically to estimate
+something like the average treatment effect (ATE):
+\begin{equation}\label{eq:ate}
+ATE=\EE[Y_T-Y_C]=\EE[Y_T]-\EE[Y_C]
+\end{equation}
+the average difference between how students would score if assigned to
+treatment and how they would score under control.
+Importantly, the expectations $\EE[Y_T]$ and $\EE[Y_C]$ are taken over
+the \emph{entire} sample, not just for students assigned to the
+treatment or to the control condition.
+This is possible because $\yti$ and $\yci$ are both defined for every
+study participant, even if only one is observed.
+Randomization of treatment assignment allows us to estimate average
+potential outcome values for the entire sample, $\EE[Y_T]$ and
+$\EE[Y_C]$, with the sample averages of $Y$ for the treatment group and
+control group, respectively.
+
+Subgroup analysis is a straightforward extension, as long as the
+definition of the subgroup is not itself affected by treatment
+assignment.
+Take gender, for example: the ATE for women  is the difference between
+$\EE [Y_T|Female]$, the mean $Y_T$ for all of the women in the study,
+and $\EE [Y_C|Female]$, the mean $Y_C$ for the women in the study.
+Along exactly the same lines, the ATE for men is $\EE[Y_T-Y_C|Male]$.
+Each of these is a causal effect and may be estimated by differences
+between sample averages under randomization.
+On the other hand, the difference between the two effects, the ATE for women and
+the ATE for men, is not a causal comparison.
+Technically, this is because nowhere do we model potential outcomes
+that are a function of gender---there is no $Y_{Mi}$ or $Y_{Fi}$
+representing $i$'s outcome were $i$ male or female, respectively.
+More prosaically, gender was not randomized, so nothing guarantees
+that the men and women of the study are causally comparable.
+
+\subsection{Intermediate Variables and Principal Stratification}
+
+When subgroups are defined subsequent to treatment, the logic of
+subgroup analysis ceases to hold.
+Take the skipper/firster example described above---recall, firsters
+begin Algebra I with the first section, while skippers begin with a
+later section.
+The average outcome among treated firsters estimates
+$\EE[Y_T|Firster]$ as in the gender case.
+However, how are we to make sense of $\EE[Y_C | Firster]$? Since
+subjects in the control group do not have access to the software, they
+are neither firsters nor skippers. Is $Y_C$ a meaningful quantity
+for skippers? Is the skipper/firster distinction meaningful for
+members of the control group?
+Along similar lines, how might the ATE for firsters be estimated?
+Comparing firsters' outcomes to the entire control group is not a fair
+comparison, since firsters may differ, on average, from the rest of
+the sample, in some relevant baseline characteristic.
+
+In other examples, the intermediate value is defined for both
+treatment and control groups. For instance, if members of the control
+group had been able to access the CT software, there may have been control
+firsters and skippers.
+Nevertheless, the problem remains---skipping the first section in the
+control condition may not be quite the same as skipping it in the
+treatment condition.
+Further, it may be the case that those students who skipped the first
+section in the control condition may have worked the first section in
+the treatment condition, and vice-versa.
+Comparing control firsters to treatment firsters risks comparing
+groups that are not really comparable, and undermines the rationale of
+randomization.
+
+The PS solution to this conundrum is to
+consider \emph{potential} values of intermediate variables.
+Let $\ss_i$ be a categorical variable that encodes whether subject $i$ is a
+firster or a skipper.
+Then $\sti$ encodes the group $i$ would be in were $i$ assigned to the
+treatment condition.
+Unlike $\ss$, $\st$ is defined for both treated and untreated
+subjects---$\sti=Firster$ (or $\sti=F$ for short) means that if $i$
+had been assigned to treatment, $i$ would have been a firster.
+Whereas $\EE[Y_C |\ss=Firster]$ may be undefined, is the mean outcome
+under the control condition for subjects $\EE[Y_C|\st=Firster]$ who
+\emph{would be} firsters if assigned to treatment.
+The variable $\st$ defines two \emph{principal strata}: students for
+whom $\st=Firster$ and those for whom $\st=Skipper$.
+Assuming that no one assigned to treatment fails to even begin using
+CT, every subject in the experiment, regardless of treatment
+assignment, is a member of one of the two strata.
+However, principal stratum membership $\st$ is only observed for
+students assigned to treatment---it is unknown which control students
+are potential firsters and which are potential skippers.
+The ATE $\EE[Y_T-Y_C|\st=Firster]$,
+called a \emph{principal effect},
+is a straightforward subgroup effect, no different than the ATE for
+women or for men.
+However, estimating principal effects is much harder than typical
+subgroup effects, since $\st$ is unobserved in the control group.
+
+When $\ss$ is well defined for both treatment groups, (for instance,
+if members of the control group had access to CT software), $\sci$ encodes
+subject $i$'s grouping were $i$ assigned to control.
+In such scenarios, principal strata are defined based on both $\st$
+and $\sc$.
+In the CT example, there would be four principal strata: students who
+would be firsters in both treatment conditions, $\sti=\sci=Firster$,
+students who would be skippers in both conditions,
+$\sti=\sci=Skipper$, students who would be skippers in the control
+condition and firsters under treatment (i.e. whom the treatment causes
+to be firsters), $\sti=Firster$, $\sci=Skipper$, and those who would
+be firsters under control but skippers under treatment,
+$\sti=Skipper$, $\sci=Firster$.
+This is the more typical PS setup
+(e.g. \cite{AIR,feller2016compared,page2012principal}).
+However, we will focus on case in which only $\st$ is well defined,
+since this case is both simpler and more relevant to randomized trials
+of educational technology.
+
+\section{Non-Parametric Bounding for Principal Effects}
+Even with infinite data, principal effects are unknowable, absent
+additional assumptions.
+There is simply know way to know for sure which control subjects are
+firsters and which are skippers.
+However, even without imposing a parametric model, the data imply
+bounds on principal effects---limits on how small or large they may
+be.
+\citeN{bounding} provides a nice overview of this method, describing
+its use in a complex PS design, and discussing the use of covariates
+to tighten the bounds.
+While we will draw from that paper the approach we demonstrate here is
+more similar to what was described in \citeN{Lee2008}.
+
+Say our goal is to estimate the ATE for potential
+firsters,
+$\EE[Y_T|\st=F]-\EE[Y_C|\st=F]$.
+The first term, $\mutf\equiv\EE[Y_T|\st=F]$, may be estimated by the
+average outcomes among treated firsters, $\hat{\mu}_{TF}=\bar{Y}_{Z=0;\ss=F}$.
+The goal here will be to put bounds on the second term,
+$\mucf\equiv\EE[Y_C|\ss=Firster]$.
+
+The two crucial pieces of data are the $Y$ values observed in the
+control group %, $\mu_C=\EE[Y_C]$, which is estimated by the
+%sample mean of control subjects' outcomes,
+%$\hat{\mu}_C=\bar{Y}_{Z=0}$,
+and the overall proportion of the sample
+comprised by firsters, $\pi_F=Pr(\st=F)$, estimated by the
+proportion of the treated sample with $S=F$,
+$\hat{\pi}_F=\sum_{Z=1}[S=Firster]/n_T$, where $[\cdot]$ is the
+indicator function, equal to one when its contents are true and 0
+otherwise, and $n_T$ is the size of the treatment group.
+In our dataset,
+<<pifHat>>=
+pi_F <- with(dat,mean(begin[treatment==1]=='firster'))
+pi_F
+@
+Because of randomization, the proportion of the treatment group with
+$\st=F$ estimates the same proportion in the entire experimental
+sample.
+
+For the time being, assume that $\pi_F$ is estimated perfectly, so
+that $\hat{\pi}_F=\pi_F$.
+Then the number of potential firsters in the control group is
+\begin{equation*}
+\ncf=\floor{\pi_F*n_C}.
+\end{equation*}
+(For the sake of bounding we truncate $\ncf$ with the floor function $\floor{\cdot}$.)
+<<ncf>>=
+n_C <- sum(dat$treatment==0)
+n_cf <- trunc(pi_F*n_C)
+n_cf
+@
+
+Then a lower bound for $\mucf$ is the mean of the $\ncf$ lowest
+control $Y$ values, and an upper bound is the mean of the highest
+$\ncf$ control $Y$s.
+Formally, let
+\begin{equation*}
+Y_{(1)}^{Z=0}\le Y_{(2)}^{Z=0}\le \dots Y^{Z=0}_{(n_C)}
+\end{equation*}
+be the sorted $Y$s in the control group.
+Then the bounds are
+\begin{equation*}
+\mu_{CF}^L=\frac{1}{\ncf}\displaystyle\sum_{i=1}^{\ncf}
+Y_{(i)}^{Z=0}  \text{
+  and }
+\mu_{CF}^U=\frac{1}{\ncf}\displaystyle\sum_{i=n_C-\ncf+1}^{n_C}
+Y_{(i)}^{Z=0}
+\end{equation*}
+which may be calculated in \R  as:
+<<mucfBound>>=
+YcSort <- with(dat,sort(Y[treatment==0]))
+mu_cfL <- mean(YcSort[1:n_cf])
+mu_cfU <- mean(YcSort[(n_C-n_cf+1):n_C])
+@
+Finally, ATE for firsters is $\mutf-\mucf$ can be bounded as:
+\begin{equation*}
+\mutf-\mu_{CF}^U\le \mutf-\mucf \le \mutf-\mu_{CF}^L
+\end{equation*}
+In our data,
+<<ateBounds>>=
+mu_tf <- with(dat,mean(Y[treatment==1]))
+c(mu_tf-mu_cfU,mu_tf-mu_cfL)
+@
+Unfortunately, this interval is rather wide.
+That said, it suggests that CTAI assignment could not have lowered
+firster's test scores by much, and may have increased them
+substantially.
+
+\subsection{Incorporating Uncertainty into Bounds}
+Estimating bounds on principal effects with uncertainty is an area of
+open research.
+\citeN{bounding} suggests using the bootstrap \cite{bootstrap}.
+Although the theoretical rationale for the bootstrap in this case is
+not yet well established, it performs well in simulation studies.
+
+First, it will be convenient to wrap the above bounding steps into a
+function in \R:
+<<boundingFunc>>=
+bounds <- function(dat){
+    pi_F <- with(dat,mean(begin[treatment==1]=='firster'))
+    n_C <- sum(dat$treatment==0)
+    n_cf <- trunc(pi_F*n_C)
+    YcSort <- with(dat,sort(Y[treatment==0]))
+    mu_cfL <- mean(YcSort[1:n_cf])
+    mu_cfU <- mean(YcSort[(n_C-n_cf+1):n_C])
+    mu_tf <- with(dat,mean(Y[treatment==1]))
+    c(lower=mu_tf-mu_cfU,upper=mu_tf-mu_cfL)
+}
+@
+
+The bootstrap is a technique to mimic the process of drawing a random
+sample from a population, and may be used to estimate standard errors
+and confidence intervals for a very wide range of statistics of
+arbitrary complexity.
+A large number (say \texttt{B}) of times, draw a ``bootstrap sample''
+from the data, by randomly sampling $n$ cases \emph{with replacement}.
+Then, for each bootstrap sample, calculate a new set of bounds:
+<<BSbounds>>=
+B <- 1000
+bsBounds <- matrix(nrow=B,ncol=2)
+for(b in 1:B){
+    bsSamp <- sample(1:nrow(dat),nrow(dat),replace=TRUE)
+    bsBounds[b,] <- bounds(dat[bsSamp,])
+}
+@
+Finally, a the 5th percentile of the lower bound and 95\% percentile
+of the upper bound form a 95\% confidence interval for the ATE for
+firsters.
+<<boundCI>>=
+c(quantile(bsBounds[1,],0.05), quantile(bsBounds[2,],0.95))
+@
+\citeN{bounding} includes a brief discussion of theoretical issues
+with the bootstrap for PS bounds (with an explanation of why the
+relevant percentiles are 5 and 95, and not the usual 2.5 and 97.5)
+along with simulation results.
+
+Clustered or stratified randomization, or other complex randomization
+schemes, require modification of the bounding procedure;
+Some possibilities are discussed in \citeN{bounding}.
+
+\section{Model Based Principal Stratification in Theory}
+Non-parametric bounds for principal effects are guaranteed to be
+correct, but are typically quite wide---often too wide to be of
+scientific or practical use.
+In contrast, assuming models for potential outcomes $Y_T$ and $Y_T$ as
+a function of principal stratum and covariates, and
+stratum $\st$ as a function of covariates, can sometimes yield precise
+point estimates for principal effects.
+These models jointly predict which control subjects belong to which
+stratum, helping to solve the fundamental problem of principal
+stratification---that $\st$ is unobserved in the control group.
+Additionally, as we shall see, models for potential outcomes are
+necessary to correct for uncertainty in $\st$ imputations.
+Of course, if the model is (sufficiently) misspecified, or if problems
+arise in the fitting process, these estimates may be wrong.
+Extensive model checking even more important than usual in this case.
+
+It is instructive to begin with the case in which there are no
+covariates.
+Say the researcher models potential outcomes $Y_{T}$ and $Y_C$ as
+normal, but allows their means and standard deviations to vary with
+both treatment assignment and $\st$.
+Then there are eight parameters: four means denoted with $\mu$:
+$\mutf$ and $\mucf$ for treatment and control firsters, and $\muts$
+and $\mucs$ for treatment and control skippers, and four
+standard deviations denoted with $\sigma$: $\sigtf$, $\sigcf$,
+$\sigts$, and $\sigcs$.
+The average treatment effect of being assigned to treatment is
+$\mutf-\mucf$ for firsters and $\muts-\mucs$ for skippers.
+
+As in the bounding case, estimating $\mutf$, $\muts$, $\sigtf$, and
+$\sigts$, the parameters for the
+treatment group, is straightforward.
+However, since control students could be either firsters or skippers---$\sti$
+is unobserved---estimating $\mucf$ and $\mucs$ is more difficult.
+On the other hand,
+randomization ensures that probability of being a firster, $\pi\equiv
+Pr(\st=F)$, is the same in the treatment and control groups, and can
+therefore be estimated.
+If $\pi$ is the probability of being a firster, then $1-\pi$ is the
+probability of being a skipper.
+
+Since we are not sure whether $\sti=F$ or $\sti=S$, we do not know
+which distribution $i$'s outcome $Y$ is drawn from.
+Instead, it is drawn from a mixture model:
+\begin{equation}\label{eq:mixtureUnconditional}
+Y_C \sim \pi
+\mathcal{N}(\mucf,\sigcf)+(1-\pi)\mathcal{N}(\mucs,\sigcs)
+\end{equation}
+In other words, with probability $\pi$, $Y_C$ is drawn from the
+distribution for control firsters, and with probability $1-\pi$, $Y_C$
+is drawn from the distribution for skippers.
+
+The role of covariates are to personalize the probabilities $\pi$ and
+the means $\mu$ (and, in principal, standard deviations $\sigma$, but
+this is rarely done in practice) in the mixture model (\ref{eq:mixtureUnconditional}).
+Denote a vector of $p$ covariates for student $i$ as $\xx_i=\{x_{1i},\dots,x_{pi}\}$.
+Then, rather than use the same probability $\pi$ for every control
+subject, as in (\ref{eq:mixtureUnconditional}) we may define
+individual probabilities, $\pi_i\equiv Pr(\sti=F)=Pr(\st=F|\xx_i)$.
+These may be estimated in the treatment group by a ``usage model,'' such as logistic
+regression:
+\begin{equation}\label{eq:usageMod}
+logit(\pi_i)=\xx_i^t \bm{\beta}^U = \beta^U_0+\beta^U_1
+x_{1i}+\beta^U_2 x_{2i} +\dots+\beta^U_p x_{pi}
+\end{equation}
+where $logit(x)=log\{x/(1-x)\}$.
+Because of randomization, this model can be extrapolated from the
+treatment group estimating probabilities
+$logit(\hat{\pi}_i)=\xx^t_i\hat{\bm{\beta}}^U$ for $i$ in the control
+group.
+(That said, if the number of covariates $p$ is large compared with the
+sample size $n$, overfitting in the treatment group can cause
+problems, which may, in turn, be ameliorated with weakly-informative
+priors \cite{gelman2008weakly}.)
+
+Covariates can also be used to predict potential outcomes, in an
+``outcome model.''
+When outcomes are continuous, this is typically a linear regression,
+for instance
+\begin{equation}\label{eq:outcomeMod}
+Y=\alpha_{Z \ss}+\beta^Y_1x_1+\dots+\beta^Y_px_p+\epsilon
+\end{equation}
+where  $\epsilon$ is a
+random regression error, typically normally distributed, perhaps with
+a standard deviation that depends on $Z$ and/or $\st$.
+In model (\ref{eq:outcomeMod}), the differences between firsters and
+skippers in treatment and control appears in the intercept
+$\alpha_{\ss Z}$ which takes four values: $\alpha_{TF}$ for treated
+firsters, $\alpha_{TS}$ for treated skippers, $\alpha_{CF}$ for
+control firsters and $\alpha_{CS}$ for control skippers.
+Average treatment effects can be expressed as differences between the
+intercepts: the mean of $Y_T-Y_C$ is $\alpha_{TF}-\alpha_{CF}$ for
+firsters and $\alpha_{TS}-\alpha_{CS}$ for skippers.
+We have found that including the same set of covariates in both the
+usage and outcome models can help correct for mild model
+misspecification.
+
+Of course, since $\st$ is unobserved for the control group,
+(\ref{eq:outcomeMod}) cannot be fit in the usual way for control
+students.
+Instead, control potential outcomes follow a mixture distribution, not
+unlike (\ref{eq:mixtureUnconditional}):
+\begin{equation}\label{eq:mixtureConditional}
+Y_{Ci} \sim \pi_i
+\mathcal{N}(\alpha_{CF}+\xx_i^t\bm{\beta}^Y,\sigcf)+(1-\pi_i)\mathcal{N}(\alpha_{CS}+\xx_i^t\bm{\beta}^Y,\sigcs)
+\end{equation}
+where the vector dot product $\xx_i^t\bm{\beta}^Y=\beta^Y_1
+x_{1i}+\dots+\beta^Y_px_{pi}$.
+Now the normal means have been replaced with the linear model from
+\ref{eq:outcomeMod} and the probabilities $\pi$ have been replaced
+with personalized output from the usage model $\pi_i$.
+
+Model (\ref{eq:outcomeMod}) assumes that $Y_C$ and $Y_T$ behave quite
+similarly---the form of the model, as well as the covariate slopes
+$\beta^Y$ are assumed to be the same regardless of treatment
+assignment or principal stratum.
+To a certain extent, this can be relaxed, and an analyst can estimate
+a different model for $Y_C$ and $Y_T$.
+Indeed, since $Y_C$ is not observed for treated subjects, and $Y_T$ is
+not observed for controls, there is no reason, in principle, that the
+two should follow the same model.
+This is in contrast to the usage model (\ref{eq:usageMod}), which can
+be extrapolated from one group to the other.
+The quantities $\st$ and $\xx$ are independent of treatment
+assignment, whereas $Y$ is not.
+In fact, unlike the distribution of $Y_T$ conditional on $\xx$ and
+$\st$, the model for $Y_C$ conditional on $\st$ cannot be estimated
+directly from the data without a model.
+The model for $Y_C$ given $\xx$ and $\st$ is an unverifiable
+assumption (though it is, of course constrained---its predictions must
+track observed $Y_C$ values).
+
+\subsection{Fitting the Model}
+
+These ingredients---the outcome models for treatment and control
+students, and the usage model for treatment students---together define
+a ``likelihood,'' a probability distribution for all of the observed
+data.
+We denote the likelihood as
+$L(\bm{\theta}_{Y},\bm{\theta}_{\ss};\bm{Y},\bm{\ss},\xx)$
+a function of two sets of parameters---the parameters of the outcome
+model, $\bm{\theta}_{Y}$, and for the usage model
+$\bm{\theta}_{\ss}$---and of the data, outcomes $\bm{Y}$, usage
+$\bm{\ss}$, and covariates $\xx$.
+When students are mutually independent, the likelihood is a product of
+the distributions of each student's data.
+In practice, we work with the log-likelihood $l(\bm{\theta}_Y, \bm{\theta}_\ss;\bm{Y}_T,\bm{Y}_C,\bm{\ss},\xx)$, taking the natural
+logarithm of the likelihood; then this product becomes a sum.
+With the usage and outcome models defined in (\ref{eq:usageMod}), (\ref{eq:outcomeMod}), and (\ref{eq:mixtureConditional}), this comes out to:
+\begin{align}
+ & \displaystyle\sum_{\substack{\text{Treated} \\ \text{Students}}} log\{\text{Bernoulli}(\ss_i|logit^{-1}(\xx_i^t\bm{\beta}^U))\} \label{eq:trtUseLLik} \\
+ &+\displaystyle\sum_{\substack{\text{Treated}\\\text{Students}}} log\{\text{Normal}(Y_i|\alpha_{T\ss_i}+\xx_i^t\bm{\beta}^Y,\sigma_{T\ss_i})\} \label{eq:trtOutLLik} \\
+ &\begin{aligned}
+  + \displaystyle\sum_{\substack{\text{Control}\\\text{Students}}} log\{&\pi_i\text{Normal}(Y_i|\alpha_{CF}+\xx_i^t\bm{\beta}^Y,\sigcf)\\
+ +&(1-\pi_i)\text{Normal}(Y_i|\alpha_{CS}+\xx_i^t\bm{\beta}^Y,\sigcs)\}
+ \end{aligned} \label{eq:ctlLLik}
+ \end{align}
+Where $\text{Bernoulli}(m |\pi)$ is the probability of a Bernoulli trial
+with probability $\pi$ yielding outcome $m$, i.e. $\pi$ if $m=1$ and $1-\pi$
+if $m=0$, and $\text{Normal}(y|\mu,\sigma)$ is the probability density
+function of a normal random variable with mean $\mu$ and standard
+deviation $\sigma$ evaluated at $y$.
+
+Classical maximum likelihood estimates for the model parameters are
+the values that maximize the log likelihood
+(\ref{eq:trtUseLLik})--(\ref{eq:ctlLLik}).
+To fit the model in a Bayesian framework requires a prior distribution
+for each of the model parameters.
+These are distributions that do not depend on the data---they may
+encode the researcher's prior beliefs
+or hunches about model parameters or serve as tools to regularize
+model fitting.
+Often, ``uninformative'' or ``weakly informative'' priors are
+available when researchers have little prior information about model
+parameter values; in fact, these are the default in Stan, the Bayesian
+software we will use.
+However, in some cases information about what values are more
+plausible than others (for instance, that effect sizes are probably
+not larger than 2) can go a long way in improving a model's fit.
+There is a large literature surrounding the formulation of Bayesian
+models and priors; for instance,
+\citeN{kadane2011principles} or \citeN{gelman2013philosophy}.
+
+The goal of a Bayesian analysis is a posterior distribution, the joint
+distribution of model parameters conditional on the data.
+The posterior distribution encodes information such as point estimates
+(typically taken as the distribution's modes, medians, or means) and
+uncertainty about the parameters' values, which can be expressed as
+probabilities.
+For instance, a 95\% credible interval for a paramter $\theta$ is an
+interval $[a,b]$ such that $Pr(a\le \theta \le b)=0.95$.
+For a more complete overview of applied Bayesian statistics, see
+\citeN{gelman2014bayesian} or \citeN{kruschke2014doing}.
+
+
+\section{Model Based Principal Stratification in Practice}
+In this section, we will guide the reader through a Bayesian model based principal
+stratification analysis step-by-step.
+We will use \R and Stan
+to fit the Bayesian model.
+\R may be downloaded at \url{https://cran.r-project.org/};
+A number of tutorials are available on the internet; see, for
+instance, \citeN{paradis2002r}.
+Instructions for installing and using Stan are available
+at \url{http://mc-stan.org/}.
+
+
+\subsection{Writing a PS Model in Stan}\label{sec:stanCode}
+Stan is stand-alone program that can be called from \R.
+It uses Markov Chain Monte Carlo
+techniques to fit Bayesian models; for an overview, see
+\citeN{gelman2015stan}.
+For more details see the Users' Guide at \url{http://mc-stan.org}.
+
+Typically, we write code for the Stan model in a separate document.
+In this paper, we will do so by defining
+character strings in \R for each part of the model, then joining them
+and exporting them to a file, \texttt{psMod.stan}.
+
+The syntax is divided into at least three parts (ours will have five).
+The first enumerates the data used to fit the model.
+Rather than a data frame as in \texttt{R}, it is a list of variables,
+of varying types.
+In the next section, we will create each of these variables in
+\R to feed to stan.
+Note that the double forward slash \texttt{//} delimits comments.
+<<dataBlock,results='hide'>>=
+dataBlock <- '
+data{
+ int<lower=1> nc; // number of control subjects
+ int<lower=1> nt; // number of treated subjects
+ int<lower=0> ncov; // number of covariates
+
+ real Yctl[nc]; // control outcomes
+ real Ytrt[nt]; // treatment outcomes
+
+ matrix[nc,ncov] Xctl; // covariate matrix for controls
+ matrix[nt,ncov] Xtrt; //covariate matrix for treated
+
+ int<lower=0,upper=1> first[nt]; // 1=firster 0=skipper
+}
+'
+@
+
+We will feed Stan separate outcome vectors and covariate matrices for
+the treatment and control groups, since they play different roles in
+the model.
+
+The next section lists parameters---these are the aspects of the model
+that we will want to inspect after it has been fit:
+<<paramBlock,results='hide'>>=
+paramBlock <- '
+parameters{
+ real alphaTF; // Y-intercept for treatment firsters
+ real alphaTS; // Y-intercept for treatment skippers
+ real alphaCF; // Y-intercept for control firsters
+ real alphaCS; // Y-intercept for control skippers
+
+ real alphaU; // intercept for usage model
+ vector[ncov] betaU; // coefficients for covariates in usage model
+ vector[ncov] betaY; // coefficients for covariates in outcome model
+
+ // residual standard deviation:
+ real<lower=0> sigTF;
+ real<lower=0> sigTS;
+ real<lower=0> sigCF;
+ real<lower=0> sigCS;
+}
+'
+@
+
+We will include an optional section called ``transformed parameters,''
+which is useful for inspecting functions of the declared parameters.
+Each of these must first be declared, along with a variable type, and
+then defined as a function of the parameters in the
+\texttt{parameters} section.
+<<tranParam,results='hide'>>=
+tranParamBlock <- '
+transformed parameters{
+ //declare new parameters:
+ real skipperATE; //Avg. Effect for skippers
+ real firsterATE; //Avg. Effect for firsters
+ real ATEdiff; //Difference btw Avg Effects
+ vector[nc] piC; //Pr(Firster) for controls
+ vector[nt] piT; //Pr(Firster) for treateds
+
+ //define new parameters:
+ skipperATE=alphaTS-alphaCS;
+ firsterATE=alphaTF-alphaCF;
+ ATEdiff=firsterATE-skipperATE;
+ piC=inv_logit(alphaU+Xctl*betaU);
+ piT=inv_logit(alphaU+Xtrt*betaU);
+}
+'
+@
+
+The \texttt{model} section defines the statistical model---prior
+distributions and the likelihood (\ref{eq:trtUseLLik})--(\ref{eq:ctlLLik}).
+
+We will introduce additional parameters into this section that are
+functions of the parameters declared earlier.
+The only difference between these and the parameters in
+\texttt{transformed parameters} is that these are not saved and reported with the model
+fit.
+Stan is most efficient when its code is ``vectorized,'' i.e. written
+in the form of vectors and matrices instead of individual
+data-points.
+Some of this code will facilitate vectorization.
+
+<<modelBlock1,results='hide'>>=
+modelBlock1 <- '
+model{
+ // vectors of intercepts and residual SDs for treated
+ // students. useful for vectorizing:
+ vector[nt] alphaT;
+ vector[nt] sigT;
+
+ // The ? functions as if-else A?B:C returns B if A=1 and C otherwise
+ for(i in 1:nt){
+  alphaT[i]= first[i]?alphaTF:alphaTS;
+  sigT[i]= first[i]?sigTF:sigTS;
+ }
+'
+@
+
+
+The next portion contains prior distributions.
+Stan automatically assigns uninformative priors to all parameters not
+specified.
+Since treatment effect sizes in education field trials are rarely greater
+than 0.5, we specify priors that concentrate most of their weight on
+values smaller than 0.5.
+This will help the model avoid more ludicrous estimates that we would
+not believe anyway.
+
+<<priors,results='hide'>>=
+priors <- '
+ skipperATE~normal(0,.5);
+ firsterATE~normal(0,.5);
+'
+@
+Our Stan code ends with the log-likelihood from (\ref{eq:trtUseLLik}), (\ref{eq:trtOutLLik}), and (\ref{eq:ctlLLik}).
+
+The models for treatment students' data, usage model (\ref{eq:trtUseLLik}) and outcome model (\ref{eq:trtOutLLik}) are fairly standard.
+They are coded by assigning distributions to observed data \texttt{first} and \texttt{Ytrt}; Stan then translates these expressions into terms in the log-likelihood.
+First the usage model:
+<<trtMods,results='hide'>>=
+trtMods <- '
+ first~bernoulli(piT);
+ Ytrt~normal(alphaT+Xtrt*betaY,sigT);
+'
+@
+
+The outcome model for control students, (\ref{eq:ctlLLik}), is a normal mixture model.
+Writing a mixture model in Stan is somewhat complicated---instead of
+simply assigning a distribution, we construct this part of the log
+the log likelihood more directly.
+In Stan, the variable \texttt{target} is the log-likelihood, and we can add terms (\ref{eq:ctlLLik}) directly to it.
+The expression is further complicated because (\ref{eq:ctlLLik}) includes a sum of products inside a logarithm.
+For computational reasons, it is advantageous to take the logarithm of
+each of the terms of the sum, then exponentiate them, and finally take
+the logarithm of the sum as a whole.
+This is accomplished with the \texttt{log\_sum\_exp()} function.
+A more complete explanation is in the (surprisingly readable) Stan
+manual, \citeN{stanManual}, Section 13.
+This all comes out to:
+<<outModCtl,results='hide'>>=
+outModCtl <- '
+ for(i in 1:nc)
+  target += log_sum_exp(
+   log(piC[i]) + normal_lpdf(Yctl[i] | alphaCF+Xctl[i,]*betaY,sigCF),
+   log((1-piC[i])) + normal_lpdf(Yctl[i] |alphaCS+Xctl[i,]*betaY,sigCS));
+} //closes "model{"
+'
+@
+where the term \texttt{normal\_lpdf(Yctl[i] | alphaCS+Xctl[i,]*betaY,sigCS)},
+e.g., represents the logarithm of the normal density function, with mean \texttt{alphaCS+Xctl[i,]*betaY} and standard deviation \texttt{sigCS}, evaluated at the point \texttt{Yctl[i]}.
+
+A useful model checking device, called ``posterior predictive check'' \cite{rubin1984bayesianly,gelman1996posterior},
+compares real data to random fake data simulated from the fitted posterior
+distribution.
+Stan can simulate fake data in an additional model block called
+\texttt{generated quantities}, which we will use to simulate fake
+values of $\st$ for control subjects, and fake outcomes for both
+control and treated subjects.
+Stan uses functions ending in the suffix \texttt{\_rng} (i.e. random
+number generator) to simulate random values from a given distribution:
+<<genQuan,results='hide'>>=
+generatedQuantities <- '
+generated quantities{
+ int<lower=0,upper=1> first_repC[nc]; //M_T for controls
+ real Ytrt_rep[nt]; // outcomes for treateds
+ real Yctl_rep[nc]; // outcomes for controls
+
+ for(i in 1:nt){
+  if(first[i]==1)
+   Ytrt_rep[i]=normal_rng(alphaTF+Xtrt[i,]*betaY,sigTF);
+  else
+   Ytrt_rep[i]=normal_rng(alphaTS+Xtrt[i,]*betaY,sigTS);
+ }
+ for(i in 1:nc){
+  first_repC[i]=bernoulli_rng(piC[i]);
+  if(first_repC[i]==1)
+   Yctl_rep[i]=normal_rng(alphaCF+Xctl[i,]*betaY,sigCF);
+  else
+   Yctl_rep[i]=normal_rng(alphaCS+Xctl[i,]*betaY,sigCS);
+ }
+}
+'
+@
+Finally, we will combine each of these chunks into the file
+\texttt{psMod.stan}:
+<<createStanCode,hide=TRUE>>=
+cat(dataBlock,paramBlock,tranParamBlock,modelBlock1,priors,
+    trtMods,outModCtl,generatedQuantities,
+    file='psMod.stan',sep='\n')
+@
+
+\subsection{Preparing the Data in \R}
+We will call Stan from within \R to fit the model.
+This is a two-step process: first, re-format the data so that it may be loaded into Stan, then call the \texttt{stan()} function, with the data, the location of the Stan code, and fitting parameters as arguments.
+
+We will pass the data to Stan in the form of a list:
+<<defineList>>=
+stanDat <- list()
+@
+The named elements of the list correspond to the items in the \texttt{data{}} portion of the Stan code.
+First, the sample sizes:
+<<sampleSizes>>=
+stanDat$nc <- sum(dat$treatment==0)
+stanDat$nt <- sum(dat$treatment==1)
+@
+Next, the outcome data:
+<<outcomeData>>=
+stanDat$Yctl <- dat$Y[dat$treatment==0]
+stanDat$Ytrt <- dat$Y[dat$treatment==1]
+@
+
+To construct the covariate matrix, we use the \texttt{model.matrix()} function which takes a model formula and a data frame, and returns a numeric matrix, including continuous covariates and dummy variables constructed from factors.
+We will also remove the intercept column and use the \texttt{scale()} function to transform each of the matrix columns into Z-scores by subtracting their means and dividing by their standard deviations.
+The full covariate matrix is passed to Stan as two matrices, one for treatment students and one for control, along with the number of covariates.
+<<covariateMatrix>>=
+X <- model.matrix(~grade+race+sex+frl+spec+esl+pretest, data=dat)
+X <- scale(X[,-1])
+
+stanDat$ncov <- ncol(X)
+stanDat$Xctl <- X[dat$treatment==0,]
+stanDat$Xtrt <- X[dat$treatment==1,]
+@
+
+The last element of \texttt{stanDat} is the usage data:
+<<usageData>>=
+first <- ifelse(dat$begin=='firster',1,0)
+## keep only treatment cases
+stanDat$first <- first[dat$treatment==1]
+@
+
+\subsection{Calling Stan from \R}
+
+To fit the model, we use the \texttt{rstan} package, which can be
+installed into \R after Stan has itself been installed on the
+computer.
+\texttt{install.packages()}, which can be used to install all of the
+\R packages we will use in the tutorial, only needs to be run the first time
+a package is used.
+<<installRstan,eval=FALSE>>=
+install.packages('rstan')
+@
+\texttt{library()}, which must be run in each new \R session, loads
+the package:
+<<loadRstan,results='hide',cache=FALSE>>=
+library(rstan)
+@
+
+If the computer has sufficient memory, Stan can be run in parallel:
+<<parallel,cache=FALSE,results='hide'>>=
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+@
+
+Then, the model is fit using the \texttt{stan()} command:
+<<runStan1,results='hide'>>=
+mod <- stan('psMod.stan',data=stanDat)
+@
+
+Additional parameters may be passed to the \texttt{stan()} function.
+The algorithm Stan uses to fit models is a form of Markov Chain Monte
+Carlo (MCMC) called ``Hamiltonian Monte Carlo'' \cite{hmc}.
+Rather than calculate the posterior distribution analytically,
+MCMC draws random values from the posterior distribution and uses them
+to estimate the posterior, or its means, quantiles, and other
+attributes.
+MCMC is a Markov chain that draws new values for the parameters, conditional on previous draws---if the model is well-specified and identified, the Markov chain converges to a stationary distribution, which is the true posterior.
+Therefore, the MCMC process has two parts: first, a ``warmup'' stage, in which the Markov chain converges to the posterior distribution, and a ``sampling'' stage, in which we draw successive samples from the posterior distribution, that we can then use to estimate it.
+The lengths of these stages are controlled by two arguments to the \texttt{stan()} function: \texttt{iter} is the total number of iterations, and \texttt{warmup} is the number of these dedicated to convergence.
+Unfortunately, there is no way to know at the outset how long the process will take to converge, so we must guess, and then check the fitted model for convergence.
+As a default, \texttt{stan()} sets \texttt{iter} as 2000 and \texttt{warmup} as half of \texttt{iter}, i.e. 1000, leaving 1000 iterations to sample from the posterior.
+
+The Markov chain has to start somewhere, at an ``initial point.''
+The \texttt{stan()} default is to set these initial points at random, but users may specify them as well.
+By time the Markov chain converges, the initial point should be irrelevant.
+This provides an important set of convergence checks: instead of running one Markov chain to estimate the posterior distribution, run several separate Markov chains, each starting at a different initial point, and compare their results---if they disagree, the Markov chain has probably not converged.
+The number of chains in a Stan model is specified with the \texttt{chains} argument, which defaults to four.
+
+We may call the same model as above with the code
+<<runStan2,eval=FALSE>>=
+mod <- stan('psMod.stan',data=stanDat,iter=2000,warmup=1000,chains=4)
+@
+
+\subsection{Viewing and Interpreting Model Results}\label{sec:results}
+
+To see a summary of model results, use the \texttt{print()} or the
+\texttt{summary()} functions:
+<<printMod,eval=FALSE>>=
+print(mod)
+@
+This returns a table of results.
+Depending on the size of the model, this can be rather large and overwhelming---instead, we will print a subset of the results:
+<<printMod2>>=
+print(mod,
+      pars=c('alphaTF','alphaTS','alphaCF','alphaCS',
+          'firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))
+@
+
+
+<<summary,include=FALSE>>=
+sss <- summary(mod)[[1]]
+@
+
+\sloppy
+Each row corresponds to a parameter, from either the
+\texttt{parameters} or \texttt{transformed parameters} section of the
+model.
+There are two types of columns.
+Columns labeled \texttt{se\_mean},
+\texttt{n\_eff}, and \texttt{Rhat} give diagnostics of the MCMC
+process; we will discuss these below in Section
+\ref{sec:model-checking}.
+The remaining columns summarize each parameter's marginal posterior distribution, giving
+estimates of the model parameters with uncertainty.
+The \texttt{mean} column is the mean of the marginal posterior, which may be taken as a point estimate.
+\texttt{sd} is the marginal posterior standard deviations, analogous to the standard error in classical models.
+The \texttt{2.5\%} and \texttt{97.5\%} columns estimate 95\% credible
+intervals: the model fit estimates an 95\% probability that the
+parameter is in this interval.
+Percentiles other than 2.5 and 97.5 may be computed as well or instead, using the
+\texttt{probs} field in \texttt{print()}.
+
+Are there effects for firsters and skippers?
+The posterior distribution of the model parameter \texttt{firsterATE}
+captures our estimate of the ATE for firsters, with uncertainty.
+Based on the printed output, the posterior for the firster ATE has a mean of
+\Sexpr{round(sss['firsterATE','mean'],2)}, a standard deviation of
+\Sexpr{round(sss['firsterATE','sd'],2)}, and a 95\% credible interval
+of [\Sexpr{round(sss['firsterATE','2.5%'],2)},
+\Sexpr{round(sss['firsterATE','97.5%'],2)}].
+According to these results, there is a substantial effect of being
+assigned to CTAI for subjects who would, if assigned, begin on the
+first section.
+For skippers, the model estimates an ATE of
+\Sexpr{round(sss['skipperATE','mean'],2)}, with a posterior standard deviation of
+\Sexpr{round(sss['skipperATE','sd'],2)}, and a 95\% credible interval
+of [\Sexpr{round(sss['skipperATE','2.5%'],2)},
+\Sexpr{round(sss['skipperATE','97.5%'],2)}].
+This is an even bigger effect of assignment to CTAI.
+
+How confident may we be that the effect of assignment to CTAI is
+larger for skippers than for firsters?
+The \texttt{ATEdiff} parameter estimates the difference of the two
+average effects.
+The mean of its posterior---a point estimate of the difference---is
+simply the difference of the two estimated effects:
+\Sexpr{round(sss['firsterATE','mean'],2)}$-$\Sexpr{round(sss['skipperATE','mean'],2)}$=$\Sexpr{round(sss['ATEdiff','mean'],2)}.
+The posterior standard deviation of the difference between the ATEs is
+\Sexpr{round(sss['ATEdiff','sd'],2)}, and a 95\% credible interval
+is [\Sexpr{round(sss['ATEdiff','2.5%'],2)},
+\Sexpr{round(sss['ATEdiff','97.5%'],2)}].
+Evidently, the data are consistent with either ATE being
+larger---though the model estimates a larger effect for skippers, the
+data are also consistent with a larger effect for firsters.
+
+Each of the estimated ATEs, for skippers and for firsters, is a causal
+effect---the difference between potential outcomes---and our estimates
+are unconfounded due
+to randomization of treatment assignment.
+The difference between the ATEs, however, is not causal.
+Nowhere do we model potential outcomes for possible values of $\st$
+(i.e. there is no $Y_S$ or $Y_F$ for the outcomes we would see were
+subjects skippers or firsters).
+Also, $\st$ is not randomly assigned; presumably skippers and
+firsters varied in more than just the first section they worked, so it
+is hard to attribute the difference in ATEs to $\st$.
+Nevertheless, the principal effects and their difference can provide
+insight into CTAI's operation and mechanisms.
+
+The intercept parameters from the model, \texttt{alphaTF}, \texttt{alphaTS},
+\texttt{alphaCF}, and \texttt{alphaCS}, shed more light on the
+estimated treatment effects.
+The two intercepts for the treatment group,
+\texttt{alphaTF} and \texttt{alphaTS}, are estimated as
+\Sexpr{round(sss['alphaTF','mean'],2)} and
+\Sexpr{round(sss['alphaTS','mean'],2)}, respectively.
+They are roughly equal, indicating that there is little difference in
+performance between firsters and skippers in the control group.
+On the other hand, \texttt{alphaCF} and \texttt{alphaCS}, are estimated as
+\Sexpr{round(sss['alphaCF','mean'],2)} and
+\Sexpr{round(sss['alphaCS','mean'],2)}, implying that skippers
+assigned to control scored substantially lower, on the posttest, than
+control firsters.
+While assignment to CTAI evidently boosted posttest scores for both
+groups, its effect on skippers was larger, allowing those otherwise
+weaker students to catch up with their peers.
+This is illustrated schematically in Figure \ref{fig:intercepts}.
+This result also helps emphasize the our reliance on modeling:
+while \texttt{alphaTF} and \texttt{alphaTS} are fairly straightforward
+to estimate,
+\texttt{alphaCF} and \texttt{alphaCS}, whose difference comprises
+almost the entire difference between the estimated ATEs, require the
+full complex model to estimate.
+This fact is further reflected in other model results:
+\texttt{alphaCF} and \texttt{alphaCS} have higher posterior standard
+deviations than
+their treatment group counterparts, implying more uncertainty.
+
+\begin{figure}
+\centering
+<<intercpetsFig,echo=FALSE,fig.height=2,fig.width=5>>=
+library(ggplot2)
+plotDat <- data.frame(Intercept=sss[c('alphaTF','alphaTS','alphaCF','alphaCS'),'mean'],
+                      Z=c('Treatment','Treatment','Control','Control'),
+                      strat=c('Firsters','Skippers','Firsters','Skippers'))
+
+ggplot(plotDat,aes(Z,Intercept,color=strat,group=strat))+geom_point(size=3)+geom_line()+xlab(NULL)+theme(legend.title=element_blank())
+@
+\caption{Model results, in terms of estimated intercepts
+  \texttt{alphaTF}, \texttt{alphaTS}, \texttt{alphaCF}, and
+  \texttt{alphaCS}.}
+\label{fig:intercepts}
+\end{figure}
+
+Working directly with the MCMC draws from the posterior gives us even
+more flexibility.
+The \texttt{extract()} function extracts these draws from the fitted
+Stan model:
+<<draws>>=
+draws <- extract(mod)
+@
+This produces a list whose elements are vectors or matrices MCMC draws
+for each of the model parameters.
+The fit summaries returned by the \texttt{print()} function above can
+be replicated from the MCMC draws, for instance,
+<<meanATEdiff>>=
+mean(draws$ATEdiff)
+@
+They may also be used to estimate new quantities; for instance, the
+posterior probability that \texttt{firsterATE} is greater than zero
+may be estimated as:
+<<firsterATEpos>>=
+mean(draws$firsterATE>0)
+@
+and the probability that the ATE for skippers is greater than the ATE
+for firsters is estimated as
+<<firsterSkipperProb>>=
+mean(draws$skipperATE>draws$firsterATE)
+@
+They may also be used to plot results, for instance, an estimate of
+the posterior distributions:
+<<plotPosterior,fig.width=5,fig.height=2>>=
+library(ggplot2)
+ggplot(mapping=aes(c(draws$firsterATE,draws$skipperATE),
+           color=rep(c('Firster','Skipper'),
+               each=length(draws$firsterATE))))+
+ geom_density()+
+ labs(color='Principal Stratum',x='Treatment Effect')
+@
+The posterior distribution for \texttt{skipperATE} shows some evidence
+of bi-modality, suggesting that there may be two different ways to fit
+the model to the data, neither of which is clearly better than the
+other.
+This is often taken as a sign that the parameter of interest is not
+strongly identified in the data.
+
+\section{Model Checking}\label{sec:model-checking}
+The estimates of principal effects in the previous section depended
+heavily on modeling assumptions.
+Misspecified models can yield very misleading results, depending, of
+course, in how and how severely misspecified they are.
+Moreover, as documented in \citeN{feller2016principal} and \citeN{griffin2008application},
+PS models are particularly vulnerable to issues
+of model misspecification, and even estimates from well-specified
+models can be biased.
+For this reason, model checking is especially important in the
+PS context.
+That said, how best to check PS models, and whether and to what extent
+model checking techniques address these models' weaknesses, remains an
+open question.
+
+This section will outline a number of ways to check a PS model's fit:
+MCMC convergence diagnostics,
+standard fit checks for Bayesian models, PS model checks using fake data,
+and robustness checks for PS.
+
+\subsection{Checking MCMC Convergence}
+As described briefly in Section \ref{sec:results}, MCMC is a powerful
+technique that can be used to fit arbitrarily complex Bayesian
+models.
+It relies on a Markov chain that (when circumstances are right)
+converges to the posterior distribution.
+This section will describe ways to check if the Markov chain
+converged, and assess whether it continued running long enough after
+convergence to estimate the posterior distribution with sufficient
+precision.
+
+The \texttt{rstan} output from \texttt{summary()} or \texttt{print()}
+contains some MCMC diagnostics.
+Consider our two most important parameters (excluding
+posterior distribution quantiles for brevity):
+\texttt{skipperATE} and \texttt{firsterATE}:
+<<mcmcSummary>>=
+summary(mod,pars=c('firsterATE','skipperATE'),probs=c())[[1]]
+@
+The \texttt{Rhat} column assesses convergence.
+Recall that we essentially fit the model four separate times, in four
+``chains,'' each starting from a different set of initial values.
+Since the initial values should be irrelevant after convergence,
+comparing these chains is a good way of checking convergence.
+The Rhat statistic \cite{gelmanRubin} compares within-chain
+variance of the chains to differences between them.
+At convergence, Rhat should be 1; typically values below 1.1 are
+considered acceptable.
+The Rhat statistics here, \Sexpr{sss['firsterATE','Rhat']} and
+\Sexpr{sss['skipperATE','Rhat']} easily meet this criterion.
+The function \texttt{stan\_rhat()} plots a histogram of Rhat
+statistics from all of the model's parameters.
+A quicker way to check that they are all sufficiently close to one is
+look at their maximum:
+<<rhats>>=
+max(summary(mod)[[1]][,'Rhat'])
+@
+This is well below 1.1, indicating convergence.
+
+A similar convergence check is the traceplot.
+This is a plot of MCMC draws of a parameter, in order and separated by
+chain.
+If the pattern of draws differs between chains, or if the mean of the
+draws in one or more chains appears to be changing over time, the
+chains may not have converged.
+Traceplots can be generated in \R with the \texttt{stan\_trace()}
+function:
+<<traceplot,fig.height=2,fig.width=6>>=
+ stan_trace(mod,'alphaTS')
+@
+In this traceplot, for the parameter \texttt{alphaTS}, the four chains
+are well mixed and no trend is apparent.
+
+The \texttt{n\_eff} and \texttt{se\_mean} columns of the
+\texttt{summary()} output measure the adequacy of the
+of the draws from the posterior distribution.
+Recall that the true posterior distribution can, theoretically, be
+calculated exactly from the data and the model---since this is
+impossible in practice, we instead estimate it via MCMC.
+The estimates we report are two steps removed from the true ATEs we
+are trying to estimate: the posterior distribution estimates the true
+ATEs, and our results estimate the posterior distribution.
+\texttt{n\_eff} and \texttt{se\_mean} measure the accuracy of the
+second step---our estimates of the posterior.
+\texttt{n\_eff} is the ``effective sample size'' of our sample from
+the posterior, accounting for the fact that successive MCMC draws are
+often correlated with each other.
+Note that this is a distinct (though analogous) quantity from the size
+of the dataset---it pertains to the quality of our MCMC sample, not to
+the data themselves.
+If \texttt{n\_eff} is too low, we may simply let the model
+run for more time, and collect a bigger sample from the posterior.
+\texttt{n\_eff} for the \texttt{firsterATE} parameter is
+\Sexpr{sss['firsterATE','n_eff']}; this is a large enough sample to
+estimate at mean, but may or may not be large enough to estimate the bounds
+of a 95\% credible interval \cite{roy2016sampling}.
+The \texttt{se\_mean} column gives the standard error of the estimate of the
+mean of the posterior distribution---how close is our reported mean to
+the mean of the true posterior distribution.
+
+\subsection{Standard Model Fit Checks}
+All of the standard methods to check a Bayesian model's fit to data
+can be used to check PS models.
+We will show two here, using the \texttt{bayesplot} package in \R
+\cite{bayesplot}.
+<<bayesplot>>=
+library(bayesplot)
+@
+
+The first assesses the usage model, by comparing its probability
+estimates, \texttt{piT} (or $\pi_i$), to the observed \texttt{first} ($\sti$).
+Since \texttt{first} is binary, a simple residual plot, comparing
+\texttt{first} to  \texttt{piT} is very difficult to read and
+interpret.
+Instead, a ``binned'' residual plot \citeN{gelmanHill} bins
+observations with similar estimated \texttt{piT}, and compares their
+average \texttt{piT} to the proportion of ones in their pooled
+\texttt{first}.
+In the context of a model fit by MCMC, there are many draws of
+\texttt{piT} for each subject.
+The \texttt{ppc\_error\_binned()} function creates binned
+residual plots for multiple draws of \texttt{piT} (we will do nine).
+<<binnedResid, fig.height=4,fig.width=4>>=
+ppc_error_binned(stanDat$first,draws$piT[sample(1:4000,9),])
+@
+The plot shows no pattern in distribution of the residuals---that is,
+they appear randomly scattered around zero---and most of the
+observations fall within the gray lines, as they should in a
+well-fitting model.
+
+
+The second model check relies on simulations of outcomes from the PS
+model fit.
+Recall, in the \texttt{generated quantities} portion of the Stan code
+in Section \ref{sec:stanCode}, we instructed Stan to simulate
+fake outcomes for the the control
+and treated observations, returning \texttt{Yctl\_rep} and \texttt{Ytrt\_rep}.
+These simulated outcomes can be compared to the true outcomes with the
+\texttt{ppc\_dens\_overlay()} function from the \texttt{bayesplot}
+package (we are also using the function \texttt{grid.arrange()} from
+the \texttt{gridExtra} package to display the plots side-by-side):
+<<ppc_dens,fig.height=2,fig.width=6.5>>=
+gridExtra::grid.arrange(
+ ppc_dens_overlay(stanDat$Yctl,draws$Yctl_rep[sample(1:4000,50),]),
+ ppc_dens_overlay(stanDat$Ytrt,draws$Ytrt_rep[sample(1:4000,50),]),ncol=2)
+@
+While the model's fit to the control outcomes is reasonably close, the
+distribution of treatment outcomes flattens in the middle, perhaps due
+to multi-modality, and the simulated treatment outcomes do not share
+this trait.
+
+\subsection{Running the Model on Fake Data}
+General fit assessments are extremely useful for constructing a
+well-fitting model and diagnosing problems.
+However, no model can fit a dataset perfectly, and it is unclear
+which fit deficiencies are innocuous and which are problematic.
+At the same time, even a well-specified model can sometimes yield the
+wrong result.
+One way to better understand the model's operating characteristics is
+to run the model on a fake dataset in which the true parameter values
+are known.
+If the model returns the right answer, perhaps despite some model
+misspecification, our confidence in its results increases.
+
+How should we construct a fake dataset?
+Ideally, it would mimic salient features of the real data---for
+instance, the relationships between the covariates, $\st$, and $Y$,
+and the distribution of the data.
+\citeN{advancePaper} suggests using real data from the treatment group
+to construct a fake dataset.
+Specifically, discard data from control subjects and duplicate the
+treatment data; label the duplicated treatment data as control.
+<<noEffMod,results='hide'>>=
+stanDatF <- within(stanDat,{
+    Yctl <- Ytrt
+    Xctl <- Xtrt
+    nc <- nt})
+modNoEff <- stan('psMod.stan',data=stanDatF)
+@
+
+The new fake controls are identical to their treatment counterparts;
+moreover, their ``true'' values of $\st$ are known, if unavailable to
+the model.
+The model misspecification present in the real treatment group is also
+present in the fake data.
+On the other hand, this technique does not assess model
+misspecification in the control group, and the fact that the treatment
+and control groups are identical may make model-fitting spuriously
+easier.
+
+In this fake dataset, there is no treatment effect for firsters or for
+skippers.
+Did the model estimate zero treatment effect?
+<<printNoEff>>=
+summary(modNoEff,c('firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))[[1]]
+@
+In this case, the model returned (roughly) the correct answer.
+
+It is also worth checking model results when there is an effect.
+Here we simulate a random treatment effect for the treatment
+observations that does not depend on $\st$.
+<<constEffMod,results='hide'>>=
+stanDatF2 <- within(stanDatF,
+                    Ytrt <- Ytrt+rnorm(nt,0.35,0.1))
+modConstEff <- stan('psMod.stan',data=stanDatF2)
+@
+The results are encouraging:
+<<printConstEff>>=
+summary(modConstEff,c('firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))[[1]]
+@
+Here the model returned (roughly) the correct ATE for both groups.
+
+Another scenario to consider is a treatment effect pattern like what
+our model estimated in Section \ref{sec:results}: a larger effect among
+skippers than among firsters.
+Instead of adding the treatment effect to the treated subjects,
+we'll subtract it from the control subjects:
+<<diffEffMod,results='hide'>>=
+stanDatF3 <- within(stanDatF,
+                    Yctl <- Yctl-(rnorm(nt,0.25,0.1)+0.2*(1-first)))
+modDiffEff <- stan('psMod.stan',data=stanDatF3)
+@
+The model continues to perform well in this case:
+<<printdiffEff>>=
+summary(modDiffEff,c('firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))[[1]]
+@
+
+
+The fact that the model returned the right answer for these three
+cases is encouraging, though, of course, it does not guarantee that it
+will return the right answer in all cases.
+
+\subsection{Robustness Checks}
+Another route to assessing the impact of modeling assumptions on
+treatment effect estimates is to alter those assumptions and
+re-estimate the effects.
+In other words, formulate a new statistical model and check that it
+returns approximately the same answer.
+If it does, that is evidence that the tested modeling assumptions are
+innocuous, or at least no worse than the new alternative.
+
+Each element of the statistical model can and should be checked.
+Here we will present two examples.
+One of the most important yet dubious assumptions in the model is the
+assumption of normally distributed residuals.
+\citeN{feller2016compared} replaced a student-t distribution for the normal distribution,
+estimating the degrees of freedom parameter from the data; we will do
+the same here.
+
+To re-write the model, we declare two new parameters in the
+\texttt{parameters} model block, \texttt{nuT} and
+\texttt{nuC}, for degrees of freedom in the treatment and control
+conditions, respectively, bounding each parameter below by 1.
+We also re-write and replace the relevant part of the \texttt{model}
+block, including the gamma prior for degrees of freedom suggested by
+\citeN{juarez2010model}, and save to a new file, \texttt{psModRobust.stan}.
+<<robMod>>=
+robustParams <- paste(substr(paramBlock,1,nchar(paramBlock)-2),
+ ' real<lower=1> nuT;',' real<lower=1> nuC;','}',sep='\n')
+
+robustModels <- '
+nuT ~ gamma(2,0.1); nuC ~ gamma(2,0.1);
+
+first~bernoulli(piT);
+Ytrt~student_t(nuT,alphaT+Xtrt*betaY,sigT);
+
+for(i in 1:nc)
+ target += log_sum_exp(
+  log(piC[i])+
+   student_t_lpdf(Yctl[i] | nuC,alphaCF+Xctl[i,]*betaY,sigCF),
+  log((1-piC[i]))+
+   student_t_lpdf(Yctl[i] | nuC,alphaCS+Xctl[i,]*betaY,sigCS));
+'
+cat(dataBlock,robustParams,tranParamBlock,modelBlock1,priors,
+    robustModels,'}',
+    file='psModRobust.stan',sep='\n')
+@
+<<tDist,results='hide'>>=
+robMod <- stan('psModRobust.stan',data=stanDat)
+@
+<<printRob>>=
+summary(robMod,c('firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))[[1]]
+@
+The fitted model gave estimates roughly similar to the normal model.
+
+Another important assumption is the linear additive covariate model
+for $Y$ and for $\st$.
+To relax this assumption, we add all two-way interactions between sex,
+free and reduced price lunch status, special education status, and
+pretest and a quadratic pretest term to the model, and re-fit.
+<<int,results='hide'>>=
+X2 <- model.matrix(~grade+race+esl+(sex+frl+spec+pretest)^2+I(pretest^2), data=dat)
+X2 <- scale(X2[,-1])
+
+stanDat2 <- stanDat
+stanDat2$ncov <- ncol(X2)
+stanDat2$Xctl <- X2[dat$treatment==0,]
+stanDat2$Xtrt <- X2[dat$treatment==1,]
+intMod <- stan('psMod.stan',data=stanDat2)
+@
+
+<<printInt>>=
+summary(intMod,c('firsterATE','skipperATE','ATEdiff'),
+      probs=c(0.025,0.975))[[1]]
+
+@
+
+For more examples of robustness checks, see \citeN{advancePaper} and
+\citeN{feller2016compared}.
+
+Another model checking device not discussed here is the posterior
+predictive p-value, discussed in \citeN{barnard2003principal} and
+elsewhere.
+
+\section{Conclusion}
+
+Randomized field trials in educational technology research, provide invaluable
+evidence regarding the effectiveness of educational tools and
+products.
+When researchers also collect log data, these studies can also be a source of
+evidence regarding how educational technology is used in authentic
+settings.
+Principal stratification is a method to link those two types of
+evidence: how does real-life variation in usage relate to variation in
+treatment effects?
+Answering those questions can shed light on what it is about
+educational technology that produces its effects.
+
+PS is a powerful tool, but it can also be
+difficult to use in practice.
+This paper is an attempt to guide researchers through the process of
+estimating principal effects.
+Our hope is that it will help educational technology researchers delve
+deeper into their data, and gain new insight into the learning
+process.
+
+We also hope that as researchers adopt PS, they will continue to
+develop it.
+In particular, model checking and validation continue to be areas of
+open research, especially given the results in \citeN{feller2016principal}.
+Additionally, PS can be expanded to cover a wider range of scenarios
+than the simple one described here.
+For instance, \citeN{jin2008principal} estimates principal effects as
+a function of a continuous intermediate variable,
+\citeN{mattei2013exploiting} estimates principal effects on multiple
+outcomes simultaneously, and \citeN{advancePaper} estimates principal
+effects as a function of a latent intermediate variable.
+Given the dimension, complexity, and longitudinal structure of log
+data, PS models incorporating more complex
+intermediate variables may be particularly useful.
+
+\section*{Acknowledgements}
+This material is based upon work supported by the National Science Foundation under Grant Number 1420374. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the author(s) and do not necessarily reflect the views of the National Science Foundation.
+
+\bibliographystyle{acmtrans}
+\bibliography{ct}
+
+\end{document}
+
+
